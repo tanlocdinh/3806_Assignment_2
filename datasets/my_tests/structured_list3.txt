@@ -1,0 +1,3 @@
+rev (xs @ ys) = rev ys @ rev xs
+map f (xs @ ys) = map f xs @ map f ys
+length (xs @ ys) = length xs + length ys

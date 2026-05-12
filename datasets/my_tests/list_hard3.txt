@@ -1,0 +1,1 @@
+nth (xs @ ys) n = (if n < length xs then nth xs n else nth ys (n - length xs))

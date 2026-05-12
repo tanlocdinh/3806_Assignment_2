@@ -1,0 +1,5 @@
+([]::nat list) @ xs = xs
+xs @ ([]::nat list) = xs
+map f (xs @ ys) = map f xs @ map f ys
+rev (rev xs) = xs
+length (xs @ ys) = length xs + length ys

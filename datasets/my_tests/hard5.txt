@@ -1,0 +1,5 @@
+(∀x. P x ⟶ Q x) ∧ (∃x. P x) ⟶ (∃x. Q x)
+(∀x. P x ⟷ Q x) ⟶ ((∀x. R x ⟶ P x) ⟷ (∀x. R x ⟶ Q x))
+(∀x. P x) ⟶ ((∀x. Q x ⟶ R x) ⟶ (∀x. P x ∧ Q x ⟶ R x))
+(∃x. P x ∧ (Q x ⟶ R x)) ⟶ ((∃x. P x ∧ Q x) ⟶ (∃x. R x))
+(if A then f x else f y) = f (if A then x else y)

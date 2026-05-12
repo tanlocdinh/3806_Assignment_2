@@ -1,0 +1,10 @@
+rev (xs @ ys) = rev ys @ rev xs
+map f (xs @ ys) = map f xs @ map f ys
+length (xs @ ys) = length xs + length ys
+take n xs @ drop n xs = xs
+nth (xs @ ys) n = (if n < length xs then nth xs n else nth ys (n - length xs))
+rev (rev xs) = xs
+map f (rev xs) = rev (map f xs)
+length (rev xs) = length xs
+xs @ [] = xs
+[] @ xs = xs

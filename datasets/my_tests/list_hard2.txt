@@ -1,0 +1,1 @@
+take n xs @ drop n xs = xs

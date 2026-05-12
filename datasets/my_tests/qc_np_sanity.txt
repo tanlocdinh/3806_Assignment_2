@@ -1,0 +1,4 @@
+xs @ [] = xs
+[] @ xs = xs
+xs @ ys = ys @ xs
+length (xs @ ys) = length xs + length ys

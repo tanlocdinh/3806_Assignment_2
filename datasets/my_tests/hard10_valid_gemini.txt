@@ -1,0 +1,10 @@
+(∀x. P x ⟶ Q x) ∧ (∃x. P x) ⟶ (∃x. Q x)
+(∀x. P x ⟷ Q x) ⟶ ((∀x. R x ⟶ P x) ⟷ (∀x. R x ⟶ Q x))
+(∀x. P x) ⟶ ((∀x. Q x ⟶ R x) ⟶ (∀x. P x ∧ Q x ⟶ R x))
+(∀x. P x ⟶ Q x) ∧ (∀x. Q x ⟶ R x) ⟶ (∀x. P x ⟶ R x)
+(∃x. P x ∧ Q x) ⟶ (∃x. P x)
+(∀x. P x ⟶ Q) ⟶ ((∃x. P x) ⟶ Q)
+rev (xs @ ys) = rev ys @ rev xs
+map f (rev xs) = rev (map f xs)
+take n xs @ drop n xs = xs
+nth (xs @ ys) n = (if n < length xs then nth xs n else nth ys (n - length xs))
