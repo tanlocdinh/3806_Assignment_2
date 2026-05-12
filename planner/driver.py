@@ -95,6 +95,50 @@ def normalise_goal_syntax(goal: str) -> str:
 
 ################## add #######################
 
+################## add #######################
+
+
+def _try_direct_finish(
+    isabelle,
+    session: str,
+    goal: str,
+    *,
+    trace: bool = False,
+) -> Optional[str]:
+    """
+    Try simple one-line Isabelle proofs before generating an outline.
+
+    This prevents the planner from overcomplicating easy goals by forcing them
+    into structured Isar outlines when a direct proof such as `by simp` works.
+    """
+    methods = [
+        "by simp",
+        "by auto",
+        "by blast",
+        "by fastforce",
+        "by force",
+        "by presburger",
+    ]
+
+    for method in methods:
+        proof = f'lemma "{goal}"\n  {method}\n'
+        try:
+            if _verify_full_proof(isabelle, session, proof):
+                if trace:
+                    print(f"[planner] Direct proof succeeded: {method}")
+                return proof
+        except Exception as ex:
+            if trace:
+                print(
+                    f"[planner] Direct proof failed with {method}: {type(ex).__name__}: {ex}"
+                )
+            continue
+
+    return None
+
+
+################## add #######################
+
 
 ################## add #######################
 
@@ -266,7 +310,7 @@ def _fill_one_hole(
         enable_reranker=(
             os.getenv("PLANNER_PROVER_RERANKER", "off").lower()
             in ("1", "true", "on", "yes")
-        ),
+        ),  ### edit
         initial_state_hint=state_block,
     )
 
@@ -872,6 +916,17 @@ def plan_and_fill(
         isa, session, proc = isa2, session2, proc2
 
     try:
+        ### add
+        # Fast path:
+        # For easy goals, try a direct Isabelle proof before generating a
+        # structured outline. This follows the assignment idea that easy goals
+        # may already be complete proofs such as `by simp`, while harder goals
+        # should fall back to Isar outlines and Fill.
+        if mode == "auto":
+            direct = _try_direct_finish(isa, session, goal, trace=trace)
+            if direct is not None:
+                return PlanAndFillResult(True, direct, [], [])
+
         # Generate outline
         if legacy_single_outline:
             full = propose_isar_skeleton(

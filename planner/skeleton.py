@@ -28,38 +28,43 @@ from planner.repair import _facts_from_state as _facts_from_state
 # One HTTP session (keep-alive)
 _SESSION = requests.Session()
 
+
 @dataclass(slots=True)
 class Skeleton:
     text: str
     holes: List[Tuple[int, int]]  # (start_idx, end_idx) spans where 'sorry' occurs
 
+
 SORRY_RE = re.compile(r"\bsorry\b")
 PROOF_RE = re.compile(r"(?m)^\s*proof(?:\b|\s|\()", re.UNICODE)
-QED_RE   = re.compile(r"(?m)^\s*qed\b", re.UNICODE)
+QED_RE = re.compile(r"(?m)^\s*qed\b", re.UNICODE)
 BY_INLINE_RE = re.compile(r"\s+by\s+.*$")
 # New regex helpers for sanitization
-CASE_START_RE   = re.compile(r"(?m)^\s*case\b")
-NEXT_OR_QED_RE  = re.compile(r"(?m)^\s*(next|qed)\b")
+CASE_START_RE = re.compile(r"(?m)^\s*case\b")
+NEXT_OR_QED_RE = re.compile(r"(?m)^\s*(next|qed)\b")
 SHOW_THESIS_RE = re.compile(r"(?m)^\s*(?:then\s+)?show\s+\?thesis\b")
 # Match the meta-variable immediately after 'show', capturing the 'show ' prefix so we can preserve any
 # leading tokens like 'then', 'from ...', 'with ...', 'finally', etc. We only rewrite the '?thesis|?case' token.
 SHOW_META_AT_SHOW = re.compile(r"(?m)(?P<prefix>\bshow\s+)\?(?P<meta>thesis|case)\b")
-BARE_PROOF_RE  = re.compile(r"(?m)^\s*proof\s*$")
+BARE_PROOF_RE = re.compile(r"(?m)^\s*proof\s*$")
 # General proof-mode detectors (for ?case/?thesis normalization)
-_PROOF_OPEN_RE   = re.compile(r"(?m)^\s*proof(?:\s*\(([^)]+)\))?\s*$")
-_QED_LINE_RE     = re.compile(r"(?m)^\s*qed\b")
-_MODE_CASES_RE   = re.compile(r"^\s*cases\b")
+_PROOF_OPEN_RE = re.compile(r"(?m)^\s*proof(?:\s*\(([^)]+)\))?\s*$")
+_QED_LINE_RE = re.compile(r"(?m)^\s*qed\b")
+_MODE_CASES_RE = re.compile(r"^\s*cases\b")
 _MODE_CASES_RULE = re.compile(r"^\s*cases\s+rule:")
-_MODE_INDUCT_RE  = re.compile(r"^\s*(?:induction|induct|coinduction|coinduct)\b")
+_MODE_INDUCT_RE = re.compile(r"^\s*(?:induction|induct|coinduction|coinduct)\b")
 _HAS_TACTIC_NEXT = re.compile(r"(?m)^\s*(?:by\b|apply\b|proof\b|sorry\b|done\b)")
-_HAVE_OR_SHOW    = re.compile(r"(?m)^\s*(have|show)\b")
-_INLINE_BY       = re.compile(r"\s+by\s+.+$")
-_CONTINUATION_HEAD = re.compile(r"(?m)^\s*(?:using|from|with|then|ultimately|finally|also|moreover)\b")
+_HAVE_OR_SHOW = re.compile(r"(?m)^\s*(have|show)\b")
+_INLINE_BY = re.compile(r"\s+by\s+.+$")
+_CONTINUATION_HEAD = re.compile(
+    r"(?m)^\s*(?:using|from|with|then|ultimately|finally|also|moreover)\b"
+)
 _STMT_OR_BOUNDARY = re.compile(r"(?m)^\s*(?:have|show|assume|case|next|qed)\b")
 
 # =============================================================================
 # Provider shims: Ollama (default), Hugging Face ("hf:"), Gemini ("gemini:")
 # =============================================================================
+
 
 def _ollama_generate_simple(
     prompt: str,
@@ -85,6 +90,7 @@ def _ollama_generate_simple(
     data = resp.json()
     return (data.get("response") or "").strip()
 
+
 def _hf_generate_simple(
     prompt: str,
     model_id: str,
@@ -104,12 +110,16 @@ def _hf_generate_simple(
         "parameters": {
             "temperature": OLLAMA_TEMP if temperature is None else temperature,
             "top_p": OLLAMA_TOP_P if top_p is None else top_p,
-            "max_new_tokens": OLLAMA_NUM_PREDICT if max_new_tokens is None else max_new_tokens,
+            "max_new_tokens": (
+                OLLAMA_NUM_PREDICT if max_new_tokens is None else max_new_tokens
+            ),
             "return_full_text": False,
         },
         "options": {"wait_for_model": True},
     }
-    resp = _SESSION.post(url, headers=headers, json=payload, timeout=timeout_s or OLLAMA_TIMEOUT_S)
+    resp = _SESSION.post(
+        url, headers=headers, json=payload, timeout=timeout_s or OLLAMA_TIMEOUT_S
+    )
     resp.raise_for_status()
     data = resp.json()
     if isinstance(data, list) and data:
@@ -122,6 +132,7 @@ def _hf_generate_simple(
             t = choices[0].get("text") or choices[0].get("generated_text") or ""
             return str(t).strip()
     return str(data).strip()
+
 
 @lru_cache(maxsize=1)
 def _gemini_list_models_cached(api_key: str) -> List[str]:
@@ -142,6 +153,7 @@ def _gemini_list_models_cached(api_key: str) -> List[str]:
     except Exception:
         return []
 
+
 def _gemini_resolve_model_id(model_id: str, *, timeout_s: Optional[int] = None) -> str:
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
@@ -155,28 +167,46 @@ def _gemini_resolve_model_id(model_id: str, *, timeout_s: Optional[int] = None) 
         return (stable or cands)[0]
     return model_id
 
+
 def _gemini_cli_available() -> bool:
     from shutil import which
+
     return which("gemini") is not None
 
-def _gemini_cli_generate_simple(prompt: str, model_id: str, *, timeout_s: Optional[int] = None) -> str:
+
+def _gemini_cli_generate_simple(
+    prompt: str, model_id: str, *, timeout_s: Optional[int] = None
+) -> str:
     import subprocess
+
     cmd = ["gemini", "-m", model_id]
     proc = subprocess.run(
-        cmd, input=prompt, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, timeout=timeout_s or OLLAMA_TIMEOUT_S, env=os.environ.copy()
+        cmd,
+        input=prompt,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=timeout_s or OLLAMA_TIMEOUT_S,
+        env=os.environ.copy(),
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"gemini CLI failed ({proc.returncode}): {(proc.stderr or proc.stdout).strip()}")
+        raise RuntimeError(
+            f"gemini CLI failed ({proc.returncode}): {(proc.stderr or proc.stdout).strip()}"
+        )
     return proc.stdout.strip()
 
-def _gemini_rest_generate_simple(prompt: str, model_id: str, *, timeout_s: Optional[int] = None) -> str:
+
+def _gemini_rest_generate_simple(
+    prompt: str, model_id: str, *, timeout_s: Optional[int] = None
+) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not set (needed for Gemini REST)")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={api_key}"
-    body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": OLLAMA_NUM_PREDICT}}
+    body = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": OLLAMA_NUM_PREDICT},
+    }
     resp = _SESSION.post(url, json=body, timeout=timeout_s or OLLAMA_TIMEOUT_S)
     resp.raise_for_status()
     data = resp.json()
@@ -190,7 +220,10 @@ def _gemini_rest_generate_simple(prompt: str, model_id: str, *, timeout_s: Optio
         pass
     return str(data).strip()
 
-def _gemini_generate_simple(prompt: str, model_id: str, *, timeout_s: Optional[int] = None) -> str:
+
+def _gemini_generate_simple(
+    prompt: str, model_id: str, *, timeout_s: Optional[int] = None
+) -> str:
     resolved = _gemini_resolve_model_id(model_id, timeout_s=timeout_s)
     if _gemini_cli_available():
         try:
@@ -203,10 +236,13 @@ def _gemini_generate_simple(prompt: str, model_id: str, *, timeout_s: Optional[i
         fallback = "gemini-2.5-pro"
         if _gemini_cli_available():
             try:
-                return _gemini_cli_generate_simple(prompt, fallback, timeout_s=timeout_s)
+                return _gemini_cli_generate_simple(
+                    prompt, fallback, timeout_s=timeout_s
+                )
             except Exception:
                 pass
         return _gemini_rest_generate_simple(prompt, fallback, timeout_s=timeout_s)
+
 
 def _generate_simple(
     prompt: str,
@@ -219,28 +255,37 @@ def _generate_simple(
     if model:
         if model.startswith("hf:"):
             return _hf_generate_simple(
-                prompt, model_id=model[len("hf:"):],
-                temperature=temperature, top_p=top_p,
-                max_new_tokens=num_predict, timeout_s=timeout_s
+                prompt,
+                model_id=model[len("hf:") :],
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=num_predict,
+                timeout_s=timeout_s,
             )
         if model.startswith("gemini:"):
             return _gemini_generate_simple(
-                prompt, model_id=model[len("gemini:"):],
-                timeout_s=timeout_s
+                prompt, model_id=model[len("gemini:") :], timeout_s=timeout_s
             )
         if model.startswith("ollama:"):
-            model = model[len("ollama:"):]
+            model = model[len("ollama:") :]
     return _ollama_generate_simple(
-        prompt, model=model, temperature=temperature, top_p=top_p,
-        num_predict=num_predict, timeout_s=timeout_s
+        prompt,
+        model=model,
+        temperature=temperature,
+        top_p=top_p,
+        num_predict=num_predict,
+        timeout_s=timeout_s,
     )
+
 
 # -----------------------------------------------------------------------------
 # Utilities: sorry spans, sanitize, state block, facts, scoring
 # -----------------------------------------------------------------------------
 
+
 def find_sorry_spans(isar: str) -> List[Tuple[int, int]]:
     return [(m.start(), m.end()) for m in SORRY_RE.finditer(isar)]
+
 
 def _ensure_lemma_header(text: str, goal: str) -> str:
     body = text.lstrip()
@@ -248,11 +293,13 @@ def _ensure_lemma_header(text: str, goal: str) -> str:
         return f'lemma "{goal}"\n{body}'
     return text
 
+
 def _normalize_calculation_ellipsis(text: str) -> str:
     # Replace Unicode ellipsis and spaced PDF (. . .) with Isar token "..."
     text = text.replace("…", "...")
     text = re.sub(r"\.\s*\.\s*\.", "...", text)
     return text
+
 
 def _crop_to_first_proof_block(text: str) -> str:
     """
@@ -263,7 +310,7 @@ def _crop_to_first_proof_block(text: str) -> str:
     m_lemma = re.search(r'(?m)^\s*lemma\s+"[^"]*"', text)
     if not m_lemma:
         return text
-    tail = text[m_lemma.start():]
+    tail = text[m_lemma.start() :]
 
     # Find the first 'proof' after that lemma
     m_proof = PROOF_RE.search(tail)
@@ -279,7 +326,7 @@ def _crop_to_first_proof_block(text: str) -> str:
     # We want earliest upcoming PROOF or QED at each step
     while True:
         m_next_proof = PROOF_RE.search(tail, pos)
-        m_next_qed   = QED_RE.search(tail, pos)
+        m_next_qed = QED_RE.search(tail, pos)
 
         if not m_next_proof and not m_next_qed:
             # No closing 'qed' — return as-is; later passes may append a final 'qed'
@@ -288,7 +335,7 @@ def _crop_to_first_proof_block(text: str) -> str:
         # Choose whichever comes first
         choose_qed = False
         if m_next_qed and m_next_proof:
-            choose_qed = (m_next_qed.start() <= m_next_proof.start())
+            choose_qed = m_next_qed.start() <= m_next_proof.start()
         elif m_next_qed and not m_next_proof:
             choose_qed = True
         else:
@@ -309,6 +356,7 @@ def _crop_to_first_proof_block(text: str) -> str:
         return tail
 
     return tail[:end_idx] + "\n"
+
 
 def _normalize_show_kinds(text: str) -> str:
     """
@@ -358,6 +406,7 @@ def _normalize_show_kinds(text: str) -> str:
         lines[i] = SHOW_META_AT_SHOW.sub(_repl, L, count=1)
     return "\n".join(lines)
 
+
 def _ensure_have_show_bodies(text: str) -> str:
     """
     Ensure every 'have …' / 'show …' has a body, but *preserve* local continuations:
@@ -375,7 +424,8 @@ def _ensure_have_show_bodies(text: str) -> str:
             j = i + 1
             # skip blank lines
             while j < n and lines[j].strip() == "":
-                out.append(lines[j]); j += 1
+                out.append(lines[j])
+                j += 1
             # consume a local continuation block
             saw_body = False
             k = j
@@ -387,17 +437,19 @@ def _ensure_have_show_bodies(text: str) -> str:
                 if _STMT_OR_BOUNDARY.match(Nk):
                     break
                 if _CONTINUATION_HEAD.match(Nk) or Nk.strip() == "":
-                    out.append(Nk); k += 1
+                    out.append(Nk)
+                    k += 1
                     continue
                 # unknown line: stop the block here
                 break
             if not saw_body:
-                indent = L[:len(L) - len(L.lstrip(" "))]
+                indent = L[: len(L) - len(L.lstrip(" "))]
                 out.append(f"{indent}  sorry")
             i = k
             continue
         i += 1
     return "\n".join(out)
+
 
 def _maybe_proof_dash(text: str) -> str:
     """
@@ -408,6 +460,7 @@ def _maybe_proof_dash(text: str) -> str:
     if re.search(r"(?m)^\s*(have|also|moreover|ultimately|finally|hence|thus)\b", text):
         return BARE_PROOF_RE.sub("proof -", text, count=1)
     return text
+
 
 def _sanitize_outline(text: str, goal: str, *, force_outline: bool) -> str:
     text = _ensure_lemma_header(text, goal)
@@ -458,15 +511,19 @@ def _sanitize_outline(text: str, goal: str, *, force_outline: bool) -> str:
         text += "\n"
     return text
 
+
 def _quick_sketch_score(isabelle, session_id: str, outline_text: str) -> int:
     try:
-        thy = build_theory(outline_text.splitlines(), add_print_state=True, end_with="sorry")
+        thy = build_theory(
+            outline_text.splitlines(), add_print_state=True, end_with="sorry"
+        )
         resps = run_theory(isabelle, session_id, thy)
         block = last_print_state_block(resps) or ""
         n = parse_subgoals(block)
         return int(n) if isinstance(n, int) else 9999
     except Exception:
         return 9999
+
 
 def _state_block_for_goal(isabelle, session_id: str, goal: str) -> str:
     mini = f'lemma "{goal}"\nproof\n  sorry\nqed\n'
@@ -477,12 +534,16 @@ def _state_block_for_goal(isabelle, session_id: str, goal: str) -> str:
     except Exception:
         return ""
 
+
 # --- Pattern detection / simple priors ---
 
 _PAT_INDUCTION = re.compile(r"(?m)^\s*proof\s*\(induction\b", re.UNICODE)
-_PAT_CASES     = re.compile(r"(?m)^\s*proof\s*\(cases\b", re.UNICODE)
-_PAT_CASES_RULE= re.compile(r"(?m)^\s*proof\s*\(cases\s+rule:\s*([A-Za-z0-9_\.]+)", re.UNICODE)
+_PAT_CASES = re.compile(r"(?m)^\s*proof\s*\(cases\b", re.UNICODE)
+_PAT_CASES_RULE = re.compile(
+    r"(?m)^\s*proof\s*\(cases\s+rule:\s*([A-Za-z0-9_\.]+)", re.UNICODE
+)
 _ID = r"[A-Za-z_][A-Za-z0-9_']*"
+
 
 def _detect_pattern_key(outline: str) -> str:
     if _PAT_INDUCTION.search(outline):
@@ -494,11 +555,15 @@ def _detect_pattern_key(outline: str) -> str:
         return "cases"
     return "plain"
 
+
 def _tokenize_goal(goal: str) -> set:
     toks = set(re.findall(_ID, goal))
-    if "@" in goal: toks.add("@")
-    if "⟹" in goal: toks.add("implies")
+    if "@" in goal:
+        toks.add("@")
+    if "⟹" in goal:
+        toks.add("implies")
     return toks
+
 
 def _load_priors(path: Optional[str]) -> List[Dict[str, Any]]:
     if not path:
@@ -515,6 +580,7 @@ def _load_priors(path: Optional[str]) -> List[Dict[str, Any]]:
         pass
     return []
 
+
 def _pattern_penalty(goal: str, outline: str, rules: List[Dict[str, Any]]) -> float:
     """
     Lower is better. Simple heuristic + optional JSON rules.
@@ -529,7 +595,11 @@ def _pattern_penalty(goal: str, outline: str, rules: List[Dict[str, Any]]) -> fl
         pen += 0.3
     if ({"True", "False"} & toks) and not key.startswith("cases"):
         pen += 0.25
-    if ({"Some", "None", "option"} & toks) and "cases_rule:option.exhaust" != key and key != "cases":
+    if (
+        ({"Some", "None", "option"} & toks)
+        and "cases_rule:option.exhaust" != key
+        and key != "cases"
+    ):
         pen += 0.25
     if ({"Inl", "Inr"} & toks) and "cases_rule:sum.exhaust" != key and key != "cases":
         pen += 0.25
@@ -542,6 +612,7 @@ def _pattern_penalty(goal: str, outline: str, rules: List[Dict[str, Any]]) -> fl
             pen += weight
     return pen
 
+
 def _hint_bonus_from_outline(outline: str, recommended: List[str]) -> int:
     if not recommended:
         return 0
@@ -553,9 +624,11 @@ def _hint_bonus_from_outline(outline: str, recommended: List[str]) -> int:
             c += 1
     return c
 
+
 # -----------------------------------------------------------------------------
 # NEW: Hint lexicon (micro-RAG) utilities
 # -----------------------------------------------------------------------------
+
 
 def _load_hintlex(path: Optional[str]) -> Dict[str, List[str]]:
     """
@@ -577,7 +650,10 @@ def _load_hintlex(path: Optional[str]) -> Dict[str, List[str]]:
                 out[tok] = [str(h) for h in val]
     return out
 
-def _hints_from_hintlex(goal: str, hintlex: Dict[str, List[str]], top: int = 8) -> List[str]:
+
+def _hints_from_hintlex(
+    goal: str, hintlex: Dict[str, List[str]], top: int = 8
+) -> List[str]:
     toks = _tokenize_goal(goal)
     got: List[str] = []
     for t in toks:
@@ -589,9 +665,29 @@ def _hints_from_hintlex(goal: str, hintlex: Dict[str, List[str]], top: int = 8) 
     # stable de-dup
     return list(dict.fromkeys(got))
 
+
+################## add #######################
+def _prefer_structured_template_for_goal(goal: str) -> Optional[Skeleton]:
+    """
+    Prefer deterministic structured Isar templates for goals that clearly match
+    induction/cases patterns.
+    """
+    templates = _lib_templates_for_goal(goal)
+
+    for sk in templates:
+        if "proof (induction" in sk.text or "proof (cases" in sk.text:
+            return sk
+
+    return None
+
+
+################## add #######################
+
+
 # -----------------------------------------------------------------------------
 # Outline generators
 # -----------------------------------------------------------------------------
+
 
 def propose_isar_skeleton(
     goal: str,
@@ -601,10 +697,24 @@ def propose_isar_skeleton(
     force_outline: bool = False,
     hints: Optional[List[str]] = None,
 ) -> Skeleton:
+
+    ################## add #######################
+
+    # Prefer deterministic structured templates for obvious induction/cases goals.
+    if force_outline:
+        sk = _prefer_structured_template_for_goal(goal)
+        if sk is not None:
+            return sk
+    ################## add #######################
+
     # Inject tiny hint list when available (keeps default behavior if None/empty)
     prompt = SKELETON_PROMPT.format(goal=goal)
     if hints:
-        prompt += "\nHINTS: Prefer using " + ", ".join(sorted(set(hints))) + " if applicable.\n"
+        prompt += (
+            "\nHINTS: Prefer using "
+            + ", ".join(sorted(set(hints)))
+            + " if applicable.\n"
+        )
     raw = _generate_simple(
         prompt=prompt,
         model=model or DEFAULT_MODEL,
@@ -613,6 +723,7 @@ def propose_isar_skeleton(
     )
     cleaned = _sanitize_outline(raw, goal=goal, force_outline=force_outline)
     return Skeleton(text=cleaned, holes=find_sorry_spans(cleaned))
+
 
 def propose_isar_skeletons(
     goal: str,
@@ -627,15 +738,21 @@ def propose_isar_skeletons(
     for t in temps:
         prompt = SKELETON_PROMPT.format(goal=goal)
         if hints:
-            prompt += "\nHINTS: Prefer using " + ", ".join(sorted(set(hints))) + " if applicable.\n"
+            prompt += (
+                "\nHINTS: Prefer using "
+                + ", ".join(sorted(set(hints)))
+                + " if applicable.\n"
+            )
         raw = _generate_simple(
             prompt=prompt,
             model=model or DEFAULT_MODEL,
             temperature=float(t),
             timeout_s=OLLAMA_TIMEOUT_S,
         )
-        sk = Skeleton(text=_sanitize_outline(raw, goal=goal, force_outline=force_outline),
-                      holes=[])
+        sk = Skeleton(
+            text=_sanitize_outline(raw, goal=goal, force_outline=force_outline),
+            holes=[],
+        )
         sk.holes = find_sorry_spans(sk.text)
         key = sk.text.strip()
         if key not in seen:
@@ -644,15 +761,19 @@ def propose_isar_skeletons(
         if k is not None and len(out) >= int(k):
             break
     if not out:
-        return [propose_isar_skeleton(goal, model=model, temp=0.3, force_outline=force_outline, hints=hints)]
+        return [
+            propose_isar_skeleton(
+                goal, model=model, temp=0.3, force_outline=force_outline, hints=hints
+            )
+        ]
     return out
+
 
 def _lib_templates_for_goal(goal: str) -> List[Skeleton]:
     toks = _tokenize_goal(goal)
     lib: List[str] = []
     if ("@" in toks or "map" in toks) and "xs" in toks:
-        lib.append(
-f'''lemma "{goal}"
+        lib.append(f"""lemma "{goal}"
 proof (induction xs)
   case Nil
   show ?case by simp
@@ -661,10 +782,9 @@ next
   show ?case
     sorry
 qed
-''')
-    if ({"Suc","0"} & toks) and "n" in toks:
-        lib.append(
-f'''lemma "{goal}"
+""")
+    if ({"Suc", "0"} & toks) and "n" in toks:
+        lib.append(f"""lemma "{goal}"
 proof (induction n)
   case 0
   show ?case by simp
@@ -673,10 +793,9 @@ next
   show ?case
     sorry
 qed
-''')
-    if ({"True","False"} & toks) and "b" in toks:
-        lib.append(
-f'''lemma "{goal}"
+""")
+    if ({"True", "False"} & toks) and "b" in toks:
+        lib.append(f"""lemma "{goal}"
 proof (cases b)
   case True
   show ?thesis
@@ -686,9 +805,8 @@ next
   show ?thesis
     sorry
 qed
-''')
-    lib.append(
-f'''lemma "{goal}"
+""")
+    lib.append(f"""lemma "{goal}"
 proof -
   have f1: "(* fill a useful intermediate statement *)"
     sorry
@@ -699,13 +817,17 @@ proof -
     using f1 f2
     sorry
 qed
-''')
-    return [Skeleton(text=s if s.endswith("\n") else s+"\n", holes=find_sorry_spans(s)) for s in lib]
+""")
+    return [
+        Skeleton(text=s if s.endswith("\n") else s + "\n", holes=find_sorry_spans(s))
+        for s in lib
+    ]
+
 
 def propose_isar_skeleton_diverse_best(
     goal: str,
     *,
-    isabelle,             # required for sketch check
+    isabelle,  # required for sketch check
     session_id: str,
     model: Optional[str] = None,
     temps: Iterable[float] = (0.35, 0.55, 0.85),
@@ -738,8 +860,14 @@ def propose_isar_skeleton_diverse_best(
     rec_hints = list(dict.fromkeys(rec_hints))[:12]  # stable de-dup + cap
 
     # Outline candidates (LLM) + optional library templates
-    cands = propose_isar_skeletons(goal, model=model, temps=temps, k=k,
-                                   force_outline=force_outline, hints=rec_hints)
+    cands = propose_isar_skeletons(
+        goal,
+        model=model,
+        temps=temps,
+        k=k,
+        force_outline=force_outline,
+        hints=rec_hints,
+    )
     if lib_templates:
         cands = _lib_templates_for_goal(goal) + cands
 
