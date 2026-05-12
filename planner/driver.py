@@ -922,7 +922,20 @@ def plan_and_fill(
         # structured outline. This follows the assignment idea that easy goals
         # may already be complete proofs such as `by simp`, while harder goals
         # should fall back to Isar outlines and Fill.
-        if mode == "auto":
+        ### add
+        # if mode == "auto":
+        #     direct = _try_direct_finish(isa, session, goal, trace=trace)
+        #     if direct is not None:
+        #         return PlanAndFillResult(True, direct, [], [])
+
+        direct_fast_path = os.getenv("PLANNER_DIRECT_FAST_PATH", "on").lower() in (
+            "1",
+            "true",
+            "on",
+            "yes",
+        )
+
+        if mode == "auto" and direct_fast_path:
             direct = _try_direct_finish(isa, session, goal, trace=trace)
             if direct is not None:
                 return PlanAndFillResult(True, direct, [], [])

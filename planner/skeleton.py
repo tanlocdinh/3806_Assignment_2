@@ -511,6 +511,48 @@ def _sanitize_outline(text: str, goal: str, *, force_outline: bool) -> str:
         text += "\n"
     return text
 
+    ################## add #######################
+
+
+_BAD_SKETCH_MARKERS = (
+    "Undefined fact",
+    "Inner syntax error",
+    "Outer syntax error",
+    "Bad context",
+    "Failed to finish proof",
+    "Illegal application of proof command",
+    "Type unification failed",
+    "Unknown fact",
+    "Undefined constant",
+    "Malformed",
+    "Exception",
+)
+
+
+def _responses_to_text(resps) -> str:
+    """Best-effort conversion of Isabelle responses into searchable text."""
+    try:
+        if isinstance(resps, (list, tuple)):
+            parts = []
+            for r in resps:
+                parts.append(str(r))
+                body = getattr(r, "response_body", None)
+                if body is not None:
+                    parts.append(str(body))
+                typ = getattr(r, "response_type", None)
+                if typ is not None:
+                    parts.append(str(typ))
+            return "\n".join(parts)
+        return str(resps)
+    except Exception:
+        return ""
+
+
+def _has_bad_sketch_error(resps) -> bool:
+    text = _responses_to_text(resps)
+    return any(marker in text for marker in _BAD_SKETCH_MARKERS)
+    ################## add #######################
+
 
 def _quick_sketch_score(isabelle, session_id: str, outline_text: str) -> int:
     try:
@@ -518,6 +560,11 @@ def _quick_sketch_score(isabelle, session_id: str, outline_text: str) -> int:
             outline_text.splitlines(), add_print_state=True, end_with="sorry"
         )
         resps = run_theory(isabelle, session_id, thy)
+        ################## add #######################
+        if _has_bad_sketch_error(resps):
+            return 9999
+        ################## add #######################
+
         block = last_print_state_block(resps) or ""
         n = parse_subgoals(block)
         return int(n) if isinstance(n, int) else 9999
