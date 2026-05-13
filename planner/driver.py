@@ -233,6 +233,205 @@ class PlanAndFillResult:
 # ============================================================================
 
 
+################## add #######################
+def _is_clean_finisher(tactic: str) -> bool:
+    """Check whether a prover/Sledgehammer finisher is a clean Isabelle command."""
+    if not tactic:
+        return False
+
+    tactic = tactic.strip()
+
+    bad_markers = [
+        "{",
+        "}",
+        '"kind"',
+        '"message"',
+        '"pos"',
+        "found a proof",
+        "Try this",
+        "Duplicate proof",
+        "writeln",
+        "status",
+        "exports",
+        "task",
+    ]
+
+    if any(m in tactic for m in bad_markers):
+        return False
+
+    return tactic.startswith(("by ", "using "))
+
+
+def _whole_direct_proof_from_text(full_text: str, tactic: str) -> str | None:
+    """
+    Collapse the current planner outline into a direct one-line proof:
+    lemma "goal"
+      by ...
+    """
+    import re
+
+    m = re.search(r'(?m)^\s*lemma\s+"([^"]+)"', full_text)
+    if not m:
+        return None
+
+    goal = m.group(1)
+    tactic = tactic.strip()
+
+    return f'lemma "{goal}"\n  {tactic}\n'
+
+
+def _extract_clean_finisher(tactic: str) -> str | None:
+    """
+    Extract a clean Isabelle finisher from prover/Sledgehammer output.
+    This is more robust than checking the whole raw string because some
+    Sledgehammer outputs may contain JSON/log text after the actual tactic.
+    """
+    if not tactic:
+        return None
+
+    import re
+
+    text = tactic.strip()
+
+    # Remove origin prefix if present, e.g. "sledge:by simp"
+    if ":" in text and text.split(":", 1)[0] in {"sledge", "llm", "prover"}:
+        text = text.split(":", 1)[1].strip()
+
+    # Prefer common clean "by (...)" commands.
+    patterns = [
+        r"by\s+\(metis [^{}\n\r]+\)",
+        r"by\s+\(simp [^{}\n\r]+\)",
+        r"by\s+\(auto [^{}\n\r]+\)",
+        r"by\s+\(blast [^{}\n\r]+\)",
+        r"by\s+\(fastforce [^{}\n\r]+\)",
+        r"by\s+\(force [^{}\n\r]+\)",
+        r"by\s+\(meson [^{}\n\r]+\)",
+        r"using\s+[^{}\n\r]+\s+by\s+(?:auto|simp|blast|fastforce|force|metis|meson)",
+        r"by\s+(?:simp|auto|blast|fast|force|fastforce|clarsimp|meson|metis|presburger|arith)",
+    ]
+
+    for pat in patterns:
+        m = re.search(pat, text)
+        if m:
+            candidate = m.group(0).strip()
+
+            bad_markers = [
+                "{",
+                "}",
+                '"kind"',
+                '"message"',
+                '"pos"',
+                "found a proof",
+                "Try this",
+                "Duplicate proof",
+                "writeln",
+                "status",
+                "exports",
+                "task",
+            ]
+
+            if not any(b in candidate for b in bad_markers):
+                return candidate
+
+    return None
+
+
+def _whole_direct_proof_from_text(full_text: str, tactic: str) -> str | None:
+    """
+    Collapse the current planner outline into a direct one-line proof:
+    lemma "goal"
+      by ...
+    """
+    import re
+
+    m = re.search(r'(?m)^\s*lemma\s+"([^"]+)"', full_text)
+    if not m:
+        return None
+
+    goal = m.group(1).strip()
+    tactic = tactic.strip()
+
+    # If your driver.py has normalize_goal_syntax, use it.
+    normalizer = globals().get("normalize_goal_syntax")
+    if callable(normalizer):
+        goal = normalizer(goal)
+
+    return f'lemma "{goal}"\n  {tactic}\n'
+
+
+def _candidate_direct_definition_finishers(goal: str) -> list[str]:
+    """
+    Generate simple direct proof candidates from constants in the goal.
+    Example: bij_betw -> by (simp add: bij_betw_def)
+    """
+    import re
+
+    toks = re.findall(r"[A-Za-z_][A-Za-z0-9_']*", goal)
+
+    # Ignore variables and logical noise as much as possible.
+    skip = {
+        "True",
+        "False",
+        "if",
+        "then",
+        "else",
+        "and",
+        "or",
+        "not",
+        "All",
+        "Ex",
+    }
+
+    # Prefer known Isabelle/HOL constants first.
+    priority = [
+        "bij_betw",
+        "inj_on",
+        "surj",
+        "finite",
+        "card",
+        "image",
+    ]
+
+    ordered = []
+    for p in priority:
+        if p in toks and p not in ordered:
+            ordered.append(p)
+
+    for t in toks:
+        if t not in skip and t not in ordered:
+            ordered.append(t)
+
+    cands = []
+
+    for t in ordered[:12]:
+        cands.append(f"by (simp add: {t}_def)")
+        cands.append(f"by (metis {t}_def)")
+
+    # Generic final fallback tactics.
+    cands.extend(
+        [
+            "by simp",
+            "by auto",
+            "by blast",
+            "by fastforce",
+            "by force",
+        ]
+    )
+
+    # De-duplicate while preserving order.
+    out = []
+    seen = set()
+    for c in cands:
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+
+    return out
+
+
+################## add #######################
+
+
 def _fill_one_hole(
     isabelle,
     session: str,
@@ -342,20 +541,72 @@ def _fill_one_hole(
             applies or applies_from_keys
         )  # prefer explicit list if steps were empty
 
-    fin = next((s for s in steps if s.startswith("by ") or s.strip() == "done"), "")
-    if not fin:
-        fin = next(
-            (
-                x
-                for x in fin_candidates
-                if isinstance(x, str) and (x.startswith("by ") or x.strip() == "done")
-            ),
-            "",
-        )
+    # fin = next((s for s in steps if s.startswith("by ") or s.strip() == "done"), "")
+    # if not fin:
+    #     fin = next(
+    #         (
+    #             x
+    #             for x in fin_candidates
+    #             if isinstance(x, str) and (x.startswith("by ") or x.strip() == "done")
+    #         ),
+    #         "",
+    #     )
 
-    # If neither steps nor recognized finishers were returned, report no-steps
+    # # If neither steps nor recognized finishers were returned, report no-steps
+    # if not (applies or fin):
+    #     return full_text, False, "no-steps"
+
+    ################## add #######################
+
+    fin = next((s for s in steps if s.startswith("by ") or s.strip() == "done"), "")
+
+    # Try to extract a clean finisher from raw prover/Sledgehammer outputs.
+    # This handles strings like "sledge:by (metis bij_betw_def)"
+    # or noisy Sledgehammer text that contains a valid "by (...)" tactic.
+    if not fin:
+        for x in fin_candidates:
+            if not isinstance(x, str):
+                continue
+
+            clean = _extract_clean_finisher(x)
+            if clean:
+                fin = clean
+                break
+
+    # Also try extracting from steps, in case steps contain origin prefixes/noisy text.
+    if not fin:
+        for x in steps:
+            clean = _extract_clean_finisher(x)
+            if clean:
+                fin = clean
+                break
+
+    # If neither applies nor a recognized finisher were returned, try direct-definition
+    # fallback before giving up. This handles cases where prove_goal prints
+    # Sledgehammer finishers but does not return them in res.
     if not (applies or fin):
+        if trace:
+            print("[fill-debug] no applies or clean finisher found")
+            print("[fill-debug] steps =", steps)
+            print("[fill-debug] fin_candidates =", fin_candidates)
+            print("[fill] Trying direct-definition fallback candidates...")
+
+        for cand in _candidate_direct_definition_finishers(goal_text):
+            direct_text = _whole_direct_proof_from_text(full_text, cand)
+
+            if direct_text is None:
+                continue
+
+            if trace:
+                print("[fill] Trying whole-proof direct fallback:")
+                print(direct_text)
+
+            if _verify_full_proof(isabelle, session, direct_text):
+                return direct_text, True, cand
+
         return full_text, False, "no-steps"
+
+    ################## add #######################
 
     # Handle finisher
     # if fin:
@@ -443,6 +694,26 @@ def _fill_one_hole(
 
         if _verify_full_proof(isabelle, session, new_text):
             return new_text, True, script_for_log
+
+        ################## add #######################
+
+        # Whole-proof fallback:
+        # If local insertion into the skeleton fails, but the prover found a clean
+        # top-level finisher, collapse the whole outline into a direct proof.
+        clean_fin = _extract_clean_finisher(fin)
+
+        if clean_fin:
+            direct_text = _whole_direct_proof_from_text(full_text, clean_fin)
+
+            if direct_text is not None:
+                if trace:
+                    print("[fill] Trying whole-proof direct fallback:")
+                    print(direct_text)
+
+                if _verify_full_proof(isabelle, session, direct_text):
+                    return direct_text, True, clean_fin
+
+        ################## add #######################
 
         if trace:
             print("[fill] Finisher replacement did not verify.")
