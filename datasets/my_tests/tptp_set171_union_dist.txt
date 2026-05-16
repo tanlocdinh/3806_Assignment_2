@@ -1,0 +1,1 @@
+(∀x A B. mem x (un A B) ⟷ (mem x A ∨ mem x B)) ⟹ (∀x A B. mem x (inter A B) ⟷ (mem x A ∧ mem x B)) ⟹ (∀A B. A = B ⟷ (∀x. mem x A ⟷ mem x B)) ⟹ (∀B C D. un B (inter C D) = inter (un B C) (un B D))
