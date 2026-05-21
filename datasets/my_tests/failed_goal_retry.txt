@@ -1,0 +1,1 @@
+P0 \<and> P1 \<longrightarrow> P1 \<and> P0

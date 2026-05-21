@@ -14,6 +14,7 @@ Rules:
 - Prefer small, locally-sound steps that reduce subgoals.
 - When relevant, use already-proven facts/lemmas via `simp add:`, `simp only:`, `auto simp add:`, `intro`, `elim`, `rule`, `metis`, etc.
 - Use structured searchers prudently: `fastforce`, `blast`, `clarify`, `clarsimp`, `linarith`, `arith`.
+- For real/integer nonlinear arithmetic (goals with `*`, `≤`, `<`, `::real`), prefer `nlinarith` or `linarith` over `simp`/`auto`. Supply square-bracket witnesses when needed: `apply (nlinarith [sq_nonneg (a - 1)])`.
 - Split on datatypes or booleans when subgoals suggest it: `apply (cases x)`, `apply (cases rule: list.exhaust)`, `apply (induction n)`, `apply (induction xs)`.
 - You may rewrite with packages: `apply (subst ...)`, `apply (simp add: algebra_simps field_simps)`, `apply (simp split: option.splits if_splits)`.
 - Do NOT emit comments, bullets, `have`/`show`, or code fences.
@@ -32,6 +33,10 @@ apply auto
 apply (auto simp add: algebra_simps)
 apply (simp only: append_assoc)
 apply arith
+apply nlinarith
+apply (nlinarith [sq_nonneg (a - 1)])
+apply linarith
+apply argo
 apply (clarsimp)
 apply (cases xs)
 apply (cases rule: option.exhaust)
@@ -47,6 +52,12 @@ apply (intro impI)
 apply fastforce
 apply blast
 apply (subst append_Nil2)
+apply algebra
+apply (simp add: zero_le_square)
+apply (simp add: ring_distribs algebra_simps)
+apply (simp add: power2_eq_square)
+apply presburger
+apply linarith
 """
 
 SYSTEM_FINISH = """You are an Isabelle/HOL proof expert.
@@ -61,6 +72,11 @@ Rules:
 - Only use `done` when there are **no subgoals remaining** in the latest state.
 - Use available facts/lemmas when helpful (e.g., `by (simp add: <facts>)`, `by (metis <facts>)`, `by (rule <thm>)`).
 - Prefer simple finishers first (`done`, `by simp`, `by auto`) before heavier tactics (`by blast`, `by fastforce`, `by (metis ...)`, `by linarith`).
+- Available tactics: simp, auto, blast, fastforce, force, presburger, arith, linarith, algebra, argo.
+- NOT available: ring, nlinarith, norm_num, omega — do NOT use these.
+- For polynomial identities use `by algebra` (replaces `by ring`).
+- For nonlinear real arithmetic, use a structured proof block with `zero_le_square`.
+- For real/integer arithmetic goals (containing `*`, `≤`, `<`, `::real`, `::int`), prefer `by nlinarith`, `by linarith`, `by argo` before `by simp`/`by auto`. Supply witnesses in square brackets when needed: `by nlinarith [sq_nonneg (x - 1)]`.
 - No comments or code fences.
 
 Examples:
@@ -72,6 +88,12 @@ by auto
 by (auto intro: subsetI)
 by arith
 by presburger
+by nlinarith
+by nlinarith [sq_nonneg (a - 1)]
+by (nlinarith [sq_nonneg a, sq_nonneg (a - 1)])
+by linarith
+by argo
+by polyrith
 by blast
 by meson
 by fastforce
@@ -79,6 +101,12 @@ by (metis append_assoc map_append)
 by (rule_tac x=… in exI, simp)
 by (simp add: algebra_simps)
 by (cases xs, simp_all)
+by algebra
+by (simp add: algebra_simps)
+by (simp add: ring_distribs)
+by (simp add: power2_eq_square)
+by presburger
+by linarith
 """
 
 USER_TEMPLATE = """Goal:
@@ -99,12 +127,15 @@ Constraints:
 """
 
 # Precompiled once (same patterns as before)
-_LINE_RE   = re.compile(r"^\s*(?:[-*]\s*)?([a-zA-Z].*?)\s*$")
-_FENCE_RE  = re.compile(r"```.*?```", re.DOTALL | re.MULTILINE)
+_LINE_RE = re.compile(r"^\s*(?:[-*]\s*)?([a-zA-Z].*?)\s*$")
+_FENCE_RE = re.compile(r"```.*?```", re.DOTALL | re.MULTILINE)
 _OLENUM_RE = re.compile(r"^\d+\.\s*")
-_WS_RE     = re.compile(r"\s+")
+_WS_RE = re.compile(r"\s+")
 
-def parse_ollama_lines(text: str, allowed_prefixes: Sequence[str], max_items: int) -> List[str]:
+
+def parse_ollama_lines(
+    text: str, allowed_prefixes: Sequence[str], max_items: int
+) -> List[str]:
     """
     Extract LLM output lines that start with one of `allowed_prefixes`.
     - Dedents code blocks fenced by ```...```.
@@ -120,7 +151,11 @@ def parse_ollama_lines(text: str, allowed_prefixes: Sequence[str], max_items: in
     text = _FENCE_RE.sub("", text)
     out: List[str] = []
     seen = set()
-    prefixes = tuple(allowed_prefixes) if not isinstance(allowed_prefixes, tuple) else allowed_prefixes
+    prefixes = (
+        tuple(allowed_prefixes)
+        if not isinstance(allowed_prefixes, tuple)
+        else allowed_prefixes
+    )
 
     for ln in text.splitlines():
         m = _LINE_RE.match(ln)

@@ -1,0 +1,10 @@
+(x::real) + y = 10 ⟹ x - y = 2 ⟹ x = 6
+(x::real) + y = 10 ⟹ x - y = 2 ⟹ y = 4
+(x::real) + y = 10 ⟹ x - y = 2 ⟹ x * y = 24
+(a::real) * (2 - a) \<le> 1
+(x::real)^2 - 2*x + 1 = (x - 1)^2
+(x::real) = 3 ⟹ y = 4 ⟹ x^2 + y^2 = 25
+(x::int) = 4 ⟹ (3 * x - 2) * (4 * x + 1) - (3 * x - 2) * (4 * x) + 1 = 11
+(n::nat) + 0 = n
+(n::nat) + m = m + n
+(n::nat) * m = m * n

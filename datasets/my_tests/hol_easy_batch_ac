@@ -1,0 +1,10 @@
+(n::nat) + m = m + n
+(n::nat) + (m + k) = (n + m) + k
+(n::nat) * 0 = 0
+(0::nat) * n = 0
+(n::nat) * m = m * n
+Suc n = n + 1
+(n::nat) \<le> n + m
+(A::'a set) \<union> B = B \<union> A
+(A::'a set) \<inter> B = B \<inter> A
+(A::'a set) \<union> (B \<union> C) = (A \<union> B) \<union> C

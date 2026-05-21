@@ -111,26 +111,59 @@ def _try_direct_finish(
     This prevents the planner from overcomplicating easy goals by forcing them
     into structured Isar outlines when a direct proof such as `by simp` works.
     """
+    import re as _re
+
+    vars_in_goal = _re.findall(r"\b([a-z])\b", goal)
+    v = vars_in_goal[0] if vars_in_goal else "x"
     methods = [
+        # Generic
         "by simp",
         "by auto",
+        "by algebra",
+        "by argo",
+        "by ring",
         "by blast",
         "by fastforce",
         "by force",
         "by presburger",
+        "by (auto simp: field_simps)",
+        "by (auto simp: algebra_simps)",
+        "by (simp add: ring_distribs)",
+        "by (simp add: field_simps)",
+        # Modular arithmetic
+        "by (simp add: zmod_simps)",
+        "by (auto simp: mod_simps)",
+        'proof (cases "a mod 3")\n  by auto\nqed',
+        f'proof -\n  have "(1 - {v}) * (1 - {v}) \\<ge> 0" by (simp add: zero_le_square)\n  thus ?thesis by (simp add: ring_distribs)\nqed',
     ]
 
+    # for method in methods:
+    #     proof = f'lemma "{goal}"\n  {method}\n'
+    #     try:
+    #         if _verify_full_proof(isabelle, session, proof):
+    #             if trace:
+    #                 print(f"[planner] Direct proof succeeded: {method}")
+    #             return proof
+    #     except Exception as ex:
+    #         if trace:
+    #             print(
+    #                 f"[planner] Direct proof failed with {method}: {type(ex).__name__}: {ex}"
+    #             )
+    #         continue
     for method in methods:
-        proof = f'lemma "{goal}"\n  {method}\n'
+        if method.startswith("proof"):
+            proof = f'lemma "{goal}"\n{method}\n'
+        else:
+            proof = f'lemma "{goal}"\n  {method}\n'
         try:
             if _verify_full_proof(isabelle, session, proof):
                 if trace:
-                    print(f"[planner] Direct proof succeeded: {method}")
+                    print(f"[planner] Direct proof succeeded: {method[:60]}")
                 return proof
         except Exception as ex:
             if trace:
                 print(
-                    f"[planner] Direct proof failed with {method}: {type(ex).__name__}: {ex}"
+                    f"[planner] Direct proof failed with {method[:40]}: {type(ex).__name__}: {ex}"
                 )
             continue
 
@@ -306,8 +339,10 @@ def _extract_clean_finisher(tactic: str) -> str | None:
         r"by\s+\(fastforce [^{}\n\r]+\)",
         r"by\s+\(force [^{}\n\r]+\)",
         r"by\s+\(meson [^{}\n\r]+\)",
+        r"by\s+\(nlinarith [^{}\n\r]*\)",  # add
+        r"by\s+\(linarith [^{}\n\r]*\)",  # add
         r"using\s+[^{}\n\r]+\s+by\s+(?:auto|simp|blast|fastforce|force|metis|meson)",
-        r"by\s+(?:simp|auto|blast|fast|force|fastforce|clarsimp|meson|metis|presburger|arith)",
+        r"by\s+(?:simp|auto|blast|fast|force|fastforce|clarsimp|meson|metis|presburger|arith|nlinarith|linarith|argo|polyrith)",
     ]
 
     for pat in patterns:
@@ -359,14 +394,90 @@ def _whole_direct_proof_from_text(full_text: str, tactic: str) -> str | None:
     return f'lemma "{goal}"\n  {tactic}\n'
 
 
+# def _candidate_direct_definition_finishers(goal: str) -> list[str]:
+#     """
+#     Generate simple direct proof candidates from constants in the goal.
+#     Example: bij_betw -> by (simp add: bij_betw_def)
+#     """
+#     import re
+
+#     toks = re.findall(r"[A-Za-z_][A-Za-z0-9_']*", goal)
+
+#     # Ignore variables and logical noise as much as possible.
+#     skip = {
+#         "True",
+#         "False",
+#         "if",
+#         "then",
+#         "else",
+#         "and",
+#         "or",
+#         "not",
+#         "All",
+#         "Ex",
+#     }
+
+#     # Prefer known Isabelle/HOL constants first.
+#     priority = [
+#         "bij_betw",
+#         "inj_on",
+#         "surj",
+#         "finite",
+#         "card",
+#         "image",
+#     ]
+
+#     ordered = []
+#     for p in priority:
+#         if p in toks and p not in ordered:
+#             ordered.append(p)
+
+#     for t in toks:
+#         if t not in skip and t not in ordered:
+#             ordered.append(t)
+
+#     cands = []
+
+#     for t in ordered[:12]:
+#         cands.append(f"by (simp add: {t}_def)")
+#         cands.append(f"by (metis {t}_def)")
+
+#     # Generic final fallback tactics.
+#     cands.extend(
+#         [
+#             "by simp",
+#             "by auto",
+#             "by blast",
+#             "by fastforce",
+#             "by force",
+#         ]
+#     )
+
+#     # De-duplicate while preserving order.
+#     out = []
+#     seen = set()
+#     for c in cands:
+#         if c not in seen:
+#             seen.add(c)
+#             out.append(c)
+
+#     return out
+
+################## add #######################
+
+
 def _candidate_direct_definition_finishers(goal: str) -> list[str]:
     """
-    Generate simple direct proof candidates from constants in the goal.
-    Example: bij_betw -> by (simp add: bij_betw_def)
+    Generate simple direct proof candidates from constants/symbols in the goal.
+
+    This is not goal-specific hardcoding. It uses symbol-based hints:
+    - constants ending with _def for definition unfolding
+    - common Isabelle/HOL list/set/arithmetic facts when related symbols appear
     """
     import re
 
     toks = re.findall(r"[A-Za-z_][A-Za-z0-9_']*", goal)
+    tokset = set(toks)
 
     # Ignore variables and logical noise as much as possible.
     skip = {
@@ -380,9 +491,172 @@ def _candidate_direct_definition_finishers(goal: str) -> list[str]:
         "not",
         "All",
         "Ex",
+        "P",
+        "Q",
+        "R",
+        "P0",
+        "P1",
+        "P2",
+        "x",
+        "y",
+        "z",
+        "xs",
+        "ys",
+        "zs",
+        "f",
+        "g",
+        "p",
+        "q",
+        "n",
+        "m",
+        "k",
+        "A",
+        "B",
+        "C",
     }
 
-    # Prefer known Isabelle/HOL constants first.
+    cands: list[str] = []
+
+    # ------------------------------------------------------------
+    # 1. Generic direct tactics first.
+    # These solve many easy HOL goals cheaply.
+    # ------------------------------------------------------------
+    cands.extend(
+        [
+            "by simp",
+            "by auto",
+            "by algebra",
+            "by blast",
+            "by fastforce",
+            "by force",
+        ]
+    )
+
+    # ------------------------------------------------------------
+    # 2. Symbol-based list theorem hints.
+    # These are general hints, not exact-goal hardcoding.
+    # ------------------------------------------------------------
+    if "rev" in tokset:
+        cands.extend(
+            [
+                "by (simp add: rev_map)",
+                "by (metis rev_map)",
+                "by (simp add: rev_rev_ident)",
+                "by (metis rev_rev_ident)",
+                "by (simp add: rev_append)",
+                "by (metis rev_append)",
+                "by simp",
+            ]
+        )
+
+    if "map" in tokset:
+        cands.extend(
+            [
+                "by (simp add: map_append)",
+                "by (metis map_append)",
+                "by (simp add: rev_map)",
+                "by (metis rev_map)",
+                "by simp",
+            ]
+        )
+
+    if "filter" in tokset:
+        cands.extend(
+            [
+                "by (simp add: filter_map)",
+                "by (metis filter_map)",
+                "by (simp add: filter_append)",
+                "by (metis filter_append)",
+                "by simp",
+                "by auto",
+            ]
+        )
+
+    if "take" in tokset or "drop" in tokset:
+        cands.extend(
+            [
+                "by simp",
+                "by (simp add: append_take_drop_id)",
+                "by (metis append_take_drop_id)",
+                "by (simp add: take_append)",
+                "by (simp add: drop_append)",
+            ]
+        )
+
+    if "length" in tokset:
+        cands.extend(
+            [
+                "by simp",
+                "by (simp add: length_append)",
+                "by (simp add: length_rev)",
+            ]
+        )
+
+    if "set" in tokset:
+        cands.extend(
+            [
+                "by auto",
+                "by blast",
+                "by (simp add: set_append)",
+                "by (metis set_append)",
+            ]
+        )
+
+    if "distinct" in tokset:
+        cands.extend(
+            [
+                "by simp",
+                "by (simp add: distinct_rev)",
+                "by (metis distinct_rev)",
+            ]
+        )
+
+    # ------------------------------------------------------------
+    # 3. Symbol-based set theorem hints.
+    # ------------------------------------------------------------
+    if "union" in goal or "\\<union>" in goal or "∪" in goal:
+        cands.extend(
+            [
+                "by auto",
+                "by blast",
+                "by (simp add: Un_commute)",
+                "by (simp add: Un_assoc)",
+            ]
+        )
+
+    if "inter" in goal or "\\<inter>" in goal or "∩" in goal:
+        cands.extend(
+            [
+                "by auto",
+                "by blast",
+                "by (simp add: Int_commute)",
+                "by (simp add: Int_assoc)",
+                "by (simp add: Int_Un_distrib)",
+            ]
+        )
+
+    if "subset" in goal or "\\<subseteq>" in goal or "⊆" in goal:
+        cands.extend(
+            [
+                "by auto",
+                "by blast",
+            ]
+        )
+
+    if any(sym in goal for sym in ["*", "+", "-", "/", "^", "sqrt"]) or "real" in goal:
+        cands.extend(
+            [
+                "by argo",
+                "by (auto simp: field_simps)",
+                "by (auto simp: algebra_simps)",
+                'proof -\n  have "(1 - a) * (1 - a) \\<ge> 0" by (simp add: zero_le_square)\n  thus ?thesis by (simp add: ring_distribs)\nqed',
+                'proof -\n  have h: "0 \\<le> (a - 1) * (a - 1)" by (simp add: zero_le_square)\n  thus ?thesis by (simp add: ring_distribs)\nqed',
+            ]
+        )
+
+    # ------------------------------------------------------------
+    # 4. Known Isabelle/HOL constants with useful definitions.
+    # ------------------------------------------------------------
     priority = [
         "bij_betw",
         "inj_on",
@@ -394,20 +668,20 @@ def _candidate_direct_definition_finishers(goal: str) -> list[str]:
 
     ordered = []
     for p in priority:
-        if p in toks and p not in ordered:
+        if p in tokset and p not in ordered:
             ordered.append(p)
 
     for t in toks:
         if t not in skip and t not in ordered:
             ordered.append(t)
 
-    cands = []
-
     for t in ordered[:12]:
         cands.append(f"by (simp add: {t}_def)")
         cands.append(f"by (metis {t}_def)")
 
-    # Generic final fallback tactics.
+    # ------------------------------------------------------------
+    # 5. Final generic fallbacks again.
+    # ------------------------------------------------------------
     cands.extend(
         [
             "by simp",
@@ -415,6 +689,7 @@ def _candidate_direct_definition_finishers(goal: str) -> list[str]:
             "by blast",
             "by fastforce",
             "by force",
+            "by meson",
         ]
     )
 

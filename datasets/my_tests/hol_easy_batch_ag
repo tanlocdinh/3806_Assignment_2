@@ -1,0 +1,10 @@
+(\<forall>x. P x) \<longrightarrow> P a
+P a \<longrightarrow> (\<exists>x. P x)
+(\<forall>x. P x \<longrightarrow> Q x) \<longrightarrow> ((\<forall>x. P x) \<longrightarrow> (\<forall>x. Q x))
+(\<forall>x. P x \<and> Q x) \<longrightarrow> (\<forall>x. P x) \<and> (\<forall>x. Q x)
+(\<forall>x. P x) \<and> (\<forall>x. Q x) \<longrightarrow> (\<forall>x. P x \<and> Q x)
+(\<exists>x. P x \<or> Q x) \<longrightarrow> (\<exists>x. P x) \<or> (\<exists>x. Q x)
+(\<exists>x. P x) \<or> (\<exists>x. Q x) \<longrightarrow> (\<exists>x. P x \<or> Q x)
+\<not> (\<forall>x. P x) \<longrightarrow> (\<exists>x. \<not> P x)
+(\<exists>x. \<not> P x) \<longrightarrow> \<not> (\<forall>x. P x)
+(\<forall>x y. R x y) \<longrightarrow> (\<forall>y x. R x y)

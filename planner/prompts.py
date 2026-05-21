@@ -15,6 +15,10 @@ STRICT RULES
 - Respect meta-targets: inside induction branches prefer `show ?case`; otherwise prefer `show ?thesis`.
 - Your output must be substantively different from every block in PRIOR FAILED BLOCKS.
 - When trivial, close with `by simp` / `by auto` / `by blast` / `by fastforce`, etc, but don't use . as a tactic. 
+- Available tactics: simp, auto, blast, fastforce, force, presburger, arith, linarith, algebra, argo.
+- NOT available: ring, nlinarith, norm_num, omega — do NOT use these.
+- For polynomial identities: `by algebra`.
+- For nonlinear inequalities: proof with `zero_le_square` and `ring_distribs`.
 - Never add "qed" in BLOCK
 - Don't copy text from PROOF_CONTEXT. 
 
@@ -30,7 +34,9 @@ LIGHT GRAMMAR (allowed shapes)
 <method> ::= "simp" ["add:" <thms>] ["only:" <thms>]
            | "auto" | "blast" | "fastforce" | "clarsimp"
            | "intro" <thms> | "elim" <thms> | "rule" <thm>           
-           | "subst" <thm> | "-"
+           | "subst" <thm> | "-" | "argo"
+           | "simp add: zero_le_square ring_distribs"
+
 
 OUTPUT
 - Keep branch structure intact; every opened branch must end with a `show` and close.
@@ -83,6 +89,10 @@ STRICT RULES
 - Respect meta-targets: inside induction branches prefer `show ?case`; otherwise prefer `show ?thesis`.
 - Your output must be substantively different from every block in PRIOR FAILED BLOCKS.
 - When trivial, close with `by simp` / `by auto` / `by blast` / `by fastforce`, etc, but don't use . as a tactic. 
+- Available tactics: simp, auto, blast, fastforce, force, presburger, arith, linarith, algebra, argo.
+- NOT available: ring, nlinarith, norm_num, omega — do NOT use these.
+- For polynomial identities: `by algebra`.
+- For nonlinear inequalities: proof with `zero_le_square` and `ring_distribs`.
 - Don't add "qed" if there isn't an open "proof".
 - Don't copy text from PROOF_CONTEXT. 
 
@@ -111,6 +121,9 @@ LIGHT GRAMMAR (allowed shapes)
            | "intro" <thms> | "elim" <thms> | "rule" <thm>
            | "cases" <expr> | "induction" <var> ["arbitrary:" <vars>]
            | "subst" <thm> | "-"
+           | "argo"
+           | "simp add: zero_le_square ring_distribs"
+
 
 OUTPUT
 - Keep branch structure intact; every opened branch must end with a `show` and close.
@@ -166,6 +179,12 @@ HARD OUTPUT RULES
   • Exhaustive cases: `proof (cases <expr>)` or `proof (cases rule: <T>.exhaust)` → branches ending with `show ?thesis …`.
   • Calculational: `proof -` with `have …`, `also`, `moreover`, `finally show ?thesis …`.
 - When trivial, close with `by simp` / `by auto` / `by blast` / `by fastforce`, etc, but don't use . as a tactic. 
+- Available tactics: simp, auto, blast, fastforce, force, presburger, arith, linarith, algebra, argo.
+- NOT available: ring, nlinarith, norm_num, omega, decide — do NOT use these.
+- For polynomial identities (e.g. expanding brackets): use `by algebra` instead of `by ring`.
+- For nonlinear real arithmetic inequalities: use structured proof with `zero_le_square` and `ring_distribs`.
+- For divisibility goals: use `proof (induction n)` with `simp` and `algebra_simps`.
+- For modular arithmetic: use `by (simp add: power2_eq_square)` combined with `presburger` or `auto`.
 - Do NOT invent constants or fact names; only use variables/tokens present in the goal or locally introduced facts.
 
 LIGHT GRAMMAR (allowed shapes)
@@ -182,6 +201,8 @@ lemma "{goal}"
              | "simp" ["add:" <thms>] ["only:" <thms>] | "auto" | "blast"
              | "fastforce" | "clarsimp" | "intro" <thms> | "elim" <thms>
              | "rule" <thm> | "metis" [<thms>] | "(" <method> ")"
+             | "simp add: zero_le_square ring_distribs"
+             | "smt (verit)"
 
 STYLE EXAMPLES
 lemma "{goal}"
@@ -230,4 +251,40 @@ proof -
   also have "... = D"  sorry
   finally show ?thesis  using f2  sorry
 qed
+
+(* Polynomial identity *)
+lemma "{goal}"
+  by algebra
+
+(* Nonlinear real inequality *)
+lemma "{goal}"
+proof -
+  have h: "(1 - a) * (1 - a) \\<ge> 0"
+    by (simp add: zero_le_square)
+  show ?thesis
+    by (simp add: ring_distribs)
+qed
+
+(* Divisibility by induction *)
+lemma "{goal}"
+proof (induction n)
+  case 0
+  show ?case by simp
+next
+  case (Suc n)
+  show ?case
+    using Suc.IH
+    by (simp add: algebra_simps)
+qed
+
+(* Modular arithmetic *)
+lemma "{goal}"
+proof -
+  have h: "a mod 3 = 0 \\<or> a mod 3 = 1 \\<or> a mod 3 = 2"
+    by presburger
+  show ?thesis
+    using h
+    by (auto simp: power2_eq_square)
+qed
+
 """

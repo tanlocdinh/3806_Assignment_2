@@ -1,0 +1,10 @@
+P0 \<longrightarrow> P0
+P0 \<and> P1 \<longrightarrow> P0
+P0 \<and> P1 \<longrightarrow> P1
+P0 \<longrightarrow> P0 \<or> P1
+P1 \<longrightarrow> P0 \<or> P1
+P0 \<and> P1 \<longrightarrow> P1 \<and> P0
+P0 \<or> P1 \<longrightarrow> P1 \<or> P0
+(P0 \<and> P1) \<and> P2 \<longrightarrow> P0 \<and> (P1 \<and> P2)
+(P0 \<or> P1) \<or> P2 \<longrightarrow> P0 \<or> (P1 \<or> P2)
+P0 \<and> (P1 \<or> P2) \<longrightarrow> (P0 \<and> P1) \<or> (P0 \<and> P2)

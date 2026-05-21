@@ -1,0 +1,1 @@
+0 < (a::nat) ∧ 0 < b ∧ 0 < c ∧ 0 < d ⟹ odd a ∧ odd b ∧ odd c ∧ odd d ⟹ a < b ∧ b < c ∧ c < d ⟹ a * d = b * c ⟹ a + d = 2 ^ (k::nat) ⟹ b + c = 2 ^ (m::nat) ⟹ a = 1

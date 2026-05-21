@@ -1,0 +1,10 @@
+rev (rev xs) = xs
+xs @ [] = xs
+[] @ xs = xs
+rev (xs @ ys) = rev ys @ rev xs
+map id xs = xs
+map f (xs @ ys) = map f xs @ map f ys
+map f (rev xs) = rev (map f xs)
+length (xs @ ys) = length xs + length ys
+length (rev xs) = length xs
+take (length xs) (xs @ ys) = xs

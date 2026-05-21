@@ -1,0 +1,10 @@
+drop (length xs) (xs @ ys) = ys
+take n xs @ drop n xs = xs
+set (xs @ ys) = set xs \<union> set ys
+x \<in> set xs \<Longrightarrow> x \<in> set (xs @ ys)
+x \<in> set ys \<Longrightarrow> x \<in> set (xs @ ys)
+distinct xs \<Longrightarrow> distinct (rev xs)
+filter p (xs @ ys) = filter p xs @ filter p ys
+filter p (map f xs) = map f (filter (p o f) xs)
+(n::nat) + 0 = n
+(0::nat) + n = n

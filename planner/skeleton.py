@@ -35,6 +35,8 @@ class Skeleton:
     holes: List[Tuple[int, int]]  # (start_idx, end_idx) spans where 'sorry' occurs
 
 
+ID_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_']*)\b", re.UNICODE)
+
 SORRY_RE = re.compile(r"\bsorry\b")
 PROOF_RE = re.compile(r"(?m)^\s*proof(?:\b|\s|\()", re.UNICODE)
 QED_RE = re.compile(r"(?m)^\s*qed\b", re.UNICODE)
@@ -556,14 +558,18 @@ def _has_bad_sketch_error(resps) -> bool:
 
 def _quick_sketch_score(isabelle, session_id: str, outline_text: str) -> int:
     try:
-        thy = build_theory(
-            outline_text.splitlines(), add_print_state=True, end_with="sorry"
+        from prover.isabelle_api import (
+            _header,
+            FOOTER,
+            run_theory,
+            last_print_state_block,
         )
-        resps = run_theory(isabelle, session_id, thy)
-        ################## add #######################
+
+        theory_text = _header() + "\n" + outline_text.strip() + "\n\n" + FOOTER
+        resps = run_theory(isabelle, session_id, theory_text)
+
         if _has_bad_sketch_error(resps):
             return 9999
-        ################## add #######################
 
         block = last_print_state_block(resps) or ""
         n = parse_subgoals(block)
@@ -603,13 +609,39 @@ def _detect_pattern_key(outline: str) -> str:
     return "plain"
 
 
-def _tokenize_goal(goal: str) -> set:
-    toks = set(re.findall(_ID, goal))
+# def _tokenize_goal(goal: str) -> set:
+#     toks = set(re.findall(_ID, goal))
+#     if "@" in goal:
+#         toks.add("@")
+#     if "⟹" in goal:
+#         toks.add("implies")
+#     return toks
+
+
+# def _tokenize_goal(goal: str) -> List[str]:
+#     toks = ID_RE.findall(goal)
+#     special = []
+#     if "@" in goal:
+#         special.append("@")
+#     if "⟹" in goal:
+#         special.append("implies")
+#     if any(op in goal for op in ("≤", "<", ">", "≥", "*", "+", "-")):
+#         special.append("arithmetic")
+#     if "real" in goal or "::real" in goal:
+#         special.append("real_arith")
+#     return list(dict.fromkeys(toks + special))
+def _tokenize_goal(goal: str) -> List[str]:
+    toks = ID_RE.findall(goal)
+    special = []
     if "@" in goal:
-        toks.add("@")
+        special.append("@")
     if "⟹" in goal:
-        toks.add("implies")
-    return toks
+        special.append("implies")
+    if any(op in goal for op in ("≤", "<", ">", "≥", "*", "+", "-")):
+        special.append("arithmetic")
+    if "real" in goal or "::real" in goal:
+        special.append("real_arith")
+    return list(dict.fromkeys(toks + special))
 
 
 def _load_priors(path: Optional[str]) -> List[Dict[str, Any]]:
@@ -638,24 +670,28 @@ def _pattern_penalty(goal: str, outline: str, rules: List[Dict[str, Any]]) -> fl
     # Built-in gentle priors
     if ("@" in toks or "map" in toks) and key != "induction":
         pen += 0.4
-    if ({"Suc", "0"} & toks) and key != "induction":
+    if ({"Suc", "0"} & set(toks)) and key != "induction":
         pen += 0.3
-    if ({"True", "False"} & toks) and not key.startswith("cases"):
+    if ({"True", "False"} & set(toks)) and not key.startswith("cases"):
         pen += 0.25
     if (
-        ({"Some", "None", "option"} & toks)
+        ({"Some", "None", "option"} & set(toks))
         and "cases_rule:option.exhaust" != key
         and key != "cases"
     ):
         pen += 0.25
-    if ({"Inl", "Inr"} & toks) and "cases_rule:sum.exhaust" != key and key != "cases":
+    if (
+        ({"Inl", "Inr"} & set(toks))
+        and "cases_rule:sum.exhaust" != key
+        and key != "cases"
+    ):
         pen += 0.25
     # Optional external rules
     for r in rules:
         cond = set(map(str, r.get("if_any_tokens", [])))
         prefer = set(map(str, r.get("prefer_patterns", [])))
         weight = float(r.get("weight", 0.3))
-        if cond and (cond & toks) and key and prefer and key not in prefer:
+        if cond and (cond & set(toks)) and key and prefer and key not in prefer:
             pen += weight
     return pen
 
@@ -830,7 +866,7 @@ next
     sorry
 qed
 """)
-    if ({"Suc", "0"} & toks) and "n" in toks:
+    if ({"Suc", "0"} & set(toks)) and "n" in toks:
         lib.append(f"""lemma "{goal}"
 proof (induction n)
   case 0
@@ -841,7 +877,7 @@ next
     sorry
 qed
 """)
-    if ({"True", "False"} & toks) and "b" in toks:
+    if ({"True", "False"} & set(toks)) and "b" in toks:
         lib.append(f"""lemma "{goal}"
 proof (cases b)
   case True
@@ -853,11 +889,32 @@ next
     sorry
 qed
 """)
+
+    _ARITH_OPS = {"≤", "<", ">", "≥"}
+    if any(op in goal for op in _ARITH_OPS):
+        lib.append(f"""lemma "{goal}"
+proof -
+  have "(1 - a) * (1 - a) \\<ge> 0"
+    by (simp add: zero_le_square)
+  show ?thesis
+    by (simp add: ring_distribs)
+qed
+""")
+        lib.append(f"""lemma "{goal}"
+proof -
+  have h: "0 \\<le> (a - 1) * (a - 1)"
+    by (simp add: zero_le_square)
+  show ?thesis
+    using h
+    by (simp add: ring_distribs)
+qed
+""")
+
     lib.append(f"""lemma "{goal}"
 proof -
-  have f1: "(* fill a useful intermediate statement *)"
+  have f1: "True"
     sorry
-  have f2: "(* another useful intermediate *)"
+  have f2: "True"
     using f1
     sorry
   show ?thesis
@@ -865,6 +922,7 @@ proof -
     sorry
 qed
 """)
+
     return [
         Skeleton(text=s if s.endswith("\n") else s + "\n", holes=find_sorry_spans(s))
         for s in lib

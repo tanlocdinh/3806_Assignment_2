@@ -1,0 +1,1 @@
+1 < (x::nat) ∧ 1 < y ∧ 1 < z ⟹ 0 ≤ (w::nat) ⟹ ln (real w) / ln (real x) = 24 ⟹ ln (real w) / ln (real y) = 40 ⟹ ln (real w) / ln (real (x * y * z)) = 12 ⟹ ln (real w) / ln (real z) = 60

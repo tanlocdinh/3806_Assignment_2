@@ -1,0 +1,40 @@
+rev (rev xs) = xs
+xs @ [] = xs
+[] @ xs = xs
+rev (xs @ ys) = rev ys @ rev xs
+map id xs = xs
+map f (xs @ ys) = map f xs @ map f ys
+map f (rev xs) = rev (map f xs)
+length (xs @ ys) = length xs + length ys
+length (rev xs) = length xs
+take (length xs) (xs @ ys) = xs
+drop (length xs) (xs @ ys) = ys
+take n xs @ drop n xs = xs
+set (xs @ ys) = set xs \<union> set ys
+x \<in> set xs \<Longrightarrow> x \<in> set (xs @ ys)
+x \<in> set ys \<Longrightarrow> x \<in> set (xs @ ys)
+distinct xs \<Longrightarrow> distinct (rev xs)
+filter p (xs @ ys) = filter p xs @ filter p ys
+filter p (map f xs) = map f (filter (p o f) xs)
+(n::nat) + 0 = n
+(0::nat) + n = n
+(n::nat) + m = m + n
+(n::nat) + (m + k) = (n + m) + k
+(n::nat) * 0 = 0
+(0::nat) * n = 0
+(n::nat) * m = m * n
+Suc n = n + 1
+(n::nat) \<le> n + m
+(A::'a set) \<union> B = B \<union> A
+(A::'a set) \<inter> B = B \<inter> A
+(A::'a set) \<union> (B \<union> C) = (A \<union> B) \<union> C
+(A::'a set) \<inter> (B \<inter> C) = (A \<inter> B) \<inter> C
+(A::'a set) \<inter> (B \<union> C) = (A \<inter> B) \<union> (A \<inter> C)
+(A::'a set) \<subseteq> A
+(A::'a set) \<subseteq> B \<Longrightarrow> B \<subseteq> C \<Longrightarrow> A \<subseteq> C
+(A::'a set) \<union> {} = A
+P \<and> Q \<Longrightarrow> Q \<and> P
+P \<or> Q \<Longrightarrow> Q \<or> P
+(P \<longrightarrow> Q) = (\<not> P \<or> Q)
+\<not> \<not> P \<Longrightarrow> P
+(P \<and> (Q \<or> R)) = ((P \<and> Q) \<or> (P \<and> R))

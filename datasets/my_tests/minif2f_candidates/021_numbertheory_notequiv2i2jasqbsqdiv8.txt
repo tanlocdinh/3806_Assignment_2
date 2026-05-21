@@ -1,0 +1,1 @@
+\<not> ((\<exists> i j. (a::int) = 2*i \<and> b=2*j) \<longleftrightarrow> (\<exists> k. a^2 + b^2 = 8*k))

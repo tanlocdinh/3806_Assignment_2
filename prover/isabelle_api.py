@@ -1,4 +1,4 @@
-# prover/isabelle_api.py 
+# prover/isabelle_api.py
 from __future__ import annotations
 
 import os, json, tempfile, textwrap, re, asyncio
@@ -19,13 +19,20 @@ try:
     from .config import ISABELLE_USE_THEORIES_TIMEOUT_S  # int
 except Exception:
     try:
-        ISABELLE_USE_THEORIES_TIMEOUT_S = int(os.getenv("ISABELLE_USE_THEORIES_TIMEOUT_S", "").strip() or 0)
+        ISABELLE_USE_THEORIES_TIMEOUT_S = int(
+            os.getenv("ISABELLE_USE_THEORIES_TIMEOUT_S", "").strip() or 0
+        )
     except Exception:
         ISABELLE_USE_THEORIES_TIMEOUT_S = 60  # 0 = disabled
 
 # ------------------ Small helpers & constants ------------------
 FOOTER = "end\n"
-_TIMEOUT_KWARGS = ("timeout", "timeout_s", "timeout_sec", "request_timeout")  # best-effort spellings
+_TIMEOUT_KWARGS = (
+    "timeout",
+    "timeout_s",
+    "timeout_sec",
+    "request_timeout",
+)  # best-effort spellings
 _SUBGOALS_RE = re.compile(r"(\d+)\s+subgoals?")
 
 _use_calls = 0
@@ -33,8 +40,22 @@ _use_timeouts = 0
 _last_call_timed_out = False
 
 
+# def _header(imports: Optional[List[str]] = None) -> str:
+#     imps = ["Main"] + list(imports or []) + list(EXTRA_IMPORTS or [])
+#     return f"theory Scratch\nimports {' '.join(imps)}\nbegin\n"
+
+
 def _header(imports: Optional[List[str]] = None) -> str:
-    imps = ["Main"] + list(imports or []) + list(EXTRA_IMPORTS or [])
+    imports_env = os.environ.get("ISABELLE_IMPORTS", "Main").strip()
+    imps = imports_env.split() if imports_env else ["Main"]
+
+    imps += list(imports or [])
+    imps += list(EXTRA_IMPORTS or [])
+
+    # remove duplicates while preserving order
+    seen = set()
+    imps = [x for x in imps if not (x in seen or seen.add(x))]
+
     return f"theory Scratch\nimports {' '.join(imps)}\nbegin\n"
 
 
@@ -54,9 +75,9 @@ def _get_field(obj: Any, names: Tuple[str, ...]) -> Any:
 def _normalize_type(rt: Any) -> str:
     """Return a normalized uppercase type name ('FINISHED'/'NOTE'/...) across variants."""
     try:
-        if hasattr(rt, "name"):               # Enum.name -> 'FINISHED'
+        if hasattr(rt, "name"):  # Enum.name -> 'FINISHED'
             return str(rt.name).strip().upper()
-        if hasattr(rt, "value"):              # Enum.value -> 'FINISHED'
+        if hasattr(rt, "value"):  # Enum.value -> 'FINISHED'
             v = getattr(rt, "value")
             return (v if isinstance(v, str) else str(v)).strip().upper()
         s = str(rt).strip()
@@ -114,7 +135,9 @@ def parse_n_subgoals(msg: str) -> Optional[int]:
     return None
 
 
-def build_theory(steps: List[str], add_print_state: bool, end_with: Optional[str]) -> str:
+def build_theory(
+    steps: List[str], add_print_state: bool, end_with: Optional[str]
+) -> str:
     body = [steps[0]] + ["  " + s for s in steps[1:]]
     if add_print_state:
         body.append("  print_state")
@@ -123,7 +146,9 @@ def build_theory(steps: List[str], add_print_state: bool, end_with: Optional[str
     return textwrap.dedent(_header() + "\n".join(body) + "\n\n" + FOOTER)
 
 
-def _use_theories_call(isabelle, *, session_id: str, master_dir: str, timeout_s: Optional[int] = None) -> List[IsabelleResponse]:
+def _use_theories_call(
+    isabelle, *, session_id: str, master_dir: str, timeout_s: Optional[int] = None
+) -> List[IsabelleResponse]:
     """Internal: best-effort pass through native timeout kwargs (if supported)."""
     if timeout_s is not None and int(timeout_s or 0) > 0:
         # Try native timeout kwarg spellings first (best-effort). Some clients ignore these,
@@ -132,14 +157,21 @@ def _use_theories_call(isabelle, *, session_id: str, master_dir: str, timeout_s:
             try:
                 return list(
                     isabelle.use_theories(
-                        theories=["Scratch"], session_id=session_id, master_dir=master_dir, **{kw: int(timeout_s)}
+                        theories=["Scratch"],
+                        session_id=session_id,
+                        master_dir=master_dir,
+                        **{kw: int(timeout_s)},
                     )
                 )
             except TypeError:
                 continue
             except Exception:
                 return []
-    return list(isabelle.use_theories(theories=["Scratch"], session_id=session_id, master_dir=master_dir))
+    return list(
+        isabelle.use_theories(
+            theories=["Scratch"], session_id=session_id, master_dir=master_dir
+        )
+    )
 
 
 def run_theory(
@@ -180,7 +212,13 @@ def run_theory(
         if timeout_s > 0:
             # Always enforce a wall-clock timeout (even if native timeouts exist but are ignored).
             with ThreadPoolExecutor(max_workers=1) as ex:
-                fut = ex.submit(_use_theories_call, isabelle, session_id=session_id, master_dir=tmpdir.name, timeout_s=timeout_s)
+                fut = ex.submit(
+                    _use_theories_call,
+                    isabelle,
+                    session_id=session_id,
+                    master_dir=tmpdir.name,
+                    timeout_s=timeout_s,
+                )
                 try:
                     return fut.result(timeout=timeout_s)
                 except FuturesTimeout:
@@ -190,7 +228,11 @@ def run_theory(
                     return []
 
         # No timeout requested → direct call
-        return list(isabelle.use_theories(theories=["Scratch"], session_id=session_id, master_dir=tmpdir.name))
+        return list(
+            isabelle.use_theories(
+                theories=["Scratch"], session_id=session_id, master_dir=tmpdir.name
+            )
+        )
     finally:
         tmpdir.cleanup()
 
@@ -215,10 +257,17 @@ def finished_ok(resps: List[IsabelleResponse]) -> Tuple[bool, Dict[str, Any]]:
     any_ok = False
     last_obj: Dict[str, Any] = {}
 
-    for r in (resps or []):
-        if _normalize_type(_get_field(r, ("response_type", "type", "kind", "tag", "name"))) != "FINISHED":
+    for r in resps or []:
+        if (
+            _normalize_type(
+                _get_field(r, ("response_type", "type", "kind", "tag", "name"))
+            )
+            != "FINISHED"
+        ):
             continue
-        obj = _decode_body_to_dict(_get_field(r, ("response_body", "body", "message", "payload")))
+        obj = _decode_body_to_dict(
+            _get_field(r, ("response_body", "body", "message", "payload"))
+        )
         if not isinstance(obj, dict):
             continue
         last_obj = obj  # track last FINISHED
@@ -242,8 +291,13 @@ def last_print_state_block(resps: List[IsabelleResponse]) -> str:
     """
     txt = ""
     # 1) Legacy NOTE/writeln path
-    for r in (resps or []):
-        if _normalize_type(_get_field(r, ("response_type", "type", "kind", "tag", "name"))) != "NOTE":
+    for r in resps or []:
+        if (
+            _normalize_type(
+                _get_field(r, ("response_type", "type", "kind", "tag", "name"))
+            )
+            != "NOTE"
+        ):
             continue
         body = _get_field(r, ("response_body", "body", "message", "payload"))
         obj = _decode_body_to_dict(body)
@@ -256,20 +310,31 @@ def last_print_state_block(resps: List[IsabelleResponse]) -> str:
     if txt:
         return txt
     # 2) FINISHED JSON fallback (authoritative on some builds)
-    for r in (resps or []):
-        if _normalize_type(_get_field(r, ("response_type", "type", "kind", "tag", "name"))) != "FINISHED":
+    for r in resps or []:
+        if (
+            _normalize_type(
+                _get_field(r, ("response_type", "type", "kind", "tag", "name"))
+            )
+            != "FINISHED"
+        ):
             continue
-        obj = _decode_body_to_dict(_get_field(r, ("response_body", "body", "message", "payload")))
+        obj = _decode_body_to_dict(
+            _get_field(r, ("response_body", "body", "message", "payload"))
+        )
         if not isinstance(obj, dict):
             continue
-        for node in (obj.get("nodes") or []):
-            for m in (node.get("messages") or []):
+        for node in obj.get("nodes") or []:
+            for m in node.get("messages") or []:
                 if str(m.get("kind", "")).lower() != "writeln":
                     continue
                 msg = str(m.get("message", "") or "")
                 # Prefer explicit goal/subgoal blocks; also accept our ML markers
-                if ("subgoal" in msg) or ("goal (" in msg) or ("goal\n" in msg) \
-                   or msg.startswith("[LLM_SUBGOAL]"):
+                if (
+                    ("subgoal" in msg)
+                    or ("goal (" in msg)
+                    or ("goal\n" in msg)
+                    or msg.startswith("[LLM_SUBGOAL]")
+                ):
                     txt = msg or txt
     return txt
 
@@ -284,13 +349,23 @@ def use_timeouts_count() -> int:
 
 __all__ = [
     # re-exports
-    "start_isabelle_server", "get_isabelle_client", "IsabelleResponse",
+    "start_isabelle_server",
+    "get_isabelle_client",
+    "IsabelleResponse",
     # config-driven helpers
-    "_header", "FOOTER", "parse_n_subgoals", "build_theory", "run_theory",
-    "finished_ok", "last_print_state_block", "use_calls_count", "use_timeouts_count",
+    "_header",
+    "FOOTER",
+    "parse_n_subgoals",
+    "build_theory",
+    "run_theory",
+    "finished_ok",
+    "last_print_state_block",
+    "use_calls_count",
+    "use_timeouts_count",
     "last_call_timed_out",
     "graceful_terminate",
 ]
+
 
 # Cross-runtime shutdown helper (works for multiprocessing.Process and subprocess.Popen)
 def graceful_terminate(proc, timeout_s: int = 3) -> None:

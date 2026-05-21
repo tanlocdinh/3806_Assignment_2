@@ -1,0 +1,10 @@
+(A::'a set) \<inter> (B \<inter> C) = (A \<inter> B) \<inter> C
+(A::'a set) \<inter> (B \<union> C) = (A \<inter> B) \<union> (A \<inter> C)
+(A::'a set) \<subseteq> A
+(A::'a set) \<subseteq> B \<Longrightarrow> B \<subseteq> C \<Longrightarrow> A \<subseteq> C
+(A::'a set) \<union> {} = A
+P \<and> Q \<Longrightarrow> Q \<and> P
+P \<or> Q \<Longrightarrow> Q \<or> P
+(P \<longrightarrow> Q) = (\<not> P \<or> Q)
+\<not> \<not> P \<Longrightarrow> P
+(P \<and> (Q \<or> R)) = ((P \<and> Q) \<or> (P \<and> R))
