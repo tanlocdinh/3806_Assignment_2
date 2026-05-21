@@ -1,0 +1,3 @@
+∀B C. (((subset B C) ⟷ (∀D. (((member D B) ⟶ (member D C)))))) ⟹ ∀B. (subset B B) ⟹ ∀B C D. (((((subset B C) ∧ (subset C D))) ⟶ (subset B D)))
+∀B C. (((subset B C) ⟷ (∀D. (((member D B) ⟶ (member D C)))))) ⟹ ∀B. ¬ (member B empty_set) ⟹ ∀B. (subset B B) ⟹ ∀B. (((empty B) ⟷ (∀C. ¬ (member C B)))) ⟹ ∀B. (subset empty_set B)
+∀A X Y. (((((subset X A) ∧ (subset Y A))) ⟷ (subset (union X Y) A)))

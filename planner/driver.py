@@ -38,6 +38,8 @@ from planner.goals import (
     _run_theory_with_timeout,
 )
 
+from planner.tptp_to_isabelle import tptp_to_hol_full, is_tptp_goal
+
 
 def _hole_fingerprint(full_text: str, span: tuple[int, int], context: int = 80) -> str:
     """Stable key for a hole: hash a small window around the 'sorry'."""
@@ -1422,6 +1424,14 @@ def plan_and_fill(
     ################## add #######################
     original_goal = goal
     goal = normalise_goal_syntax(goal)
+
+    # Convert TPTP set-theory notation to HOL built-in
+    if is_tptp_goal(goal):
+        goal_hol = tptp_to_hol_full(goal)
+        if trace:
+            print(f"[planner] TPTP goal detected, converted to HOL:")
+            print(f"  {goal_hol[:100]}")
+        goal = goal_hol
 
     if trace and goal != original_goal:
         print("[planner] normalised goal:")
